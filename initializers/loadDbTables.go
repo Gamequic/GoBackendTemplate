@@ -6,7 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// LoadDbTables initializes the database tables and creates the first user with the "admin" and "access" profile
+// LoadDbTables initializes the database tables and creates the first user with the "admin" and "access" profiles
 func LoadDbTables(db *gorm.DB) error {
 	// Check if the "admin" peofile already exists
 	var adminProfile models.Profile
@@ -67,7 +67,7 @@ func LoadDbTables(db *gorm.DB) error {
 	db.Find(&users)
 	if len(users) == 0 {
 		// If no users exist, create the first user and assign the peofiles to it
-		password := "92631043" // You may want to change this to a secure password
+		password := "1234" // You may want to change this to a secure password
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 		if err != nil {
 			return err

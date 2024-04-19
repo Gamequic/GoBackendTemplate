@@ -17,11 +17,15 @@ func init() {
 
 func main() {
 	r := gin.Default()
-	r.POST("/signup", controllers.Signup) //perfil 4
-	r.POST("/login", controllers.Login)
-	r.GET("/validate", middleware.RequireAuth, controllers.Validate)
-	r.GET("/users", middleware.RequireAuth, controllers.GetUsersList)      //perfil 3
-	r.DELETE("/users/:id", middleware.RequireAuth, controllers.DeleteUser) //perfil 6
+	r.POST("/api/users/signup", controllers.Signup)
+	r.POST("/api/users/login", controllers.Login)
+	r.GET("/api/users/validate", middleware.RequireAuth, controllers.Validate)
+	r.POST("/api/users", middleware.RequireAuth, controllers.CreateUser)                        //perfil 4
+	r.GET("/api/users", middleware.RequireAuth, controllers.GetUsers)                           //perfil 3
+	r.GET("/api/users/:id", middleware.RequireAuth, controllers.GetUserById)                    //perfil 5
+	r.PUT("/api/users/:id", middleware.RequireAuth, controllers.UpdateUser)                     //perfil 5
+	r.DELETE("/api/users/:id", middleware.RequireAuth, controllers.DeleteUser)                  //perfil 6
+	r.DELETE("/api/users/delete/:id", middleware.RequireAuth, controllers.DeleteUserCompletely) //perfil 1
 
 	r.Run() // listen and serve on 0.0.0.0:8080
 }

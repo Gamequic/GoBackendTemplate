@@ -9,7 +9,6 @@ type User struct {
 	Name     string    `gorm:"not null;type:varchar(100)"`
 	Email    string    `gorm:"unique;not null;type:varchar(100)"`
 	Profiles []Profile `gorm:"many2many:user_profiles"` // Relación muchos a muchos con profiles
-	Active   bool      `gorm:"not null;default:true"`
 }
 
 type Profile struct {
