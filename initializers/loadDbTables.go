@@ -13,7 +13,7 @@ func LoadDbTables(db *gorm.DB) error {
 	result := db.Where("name = ?", "admin").First(&adminProfile)
 	if result.RowsAffected == 0 {
 		// If "admin" profile doesn't exist, create it
-		adminProfile = models.Profile{Name: "admin", Description: "Administrador del sistema"}
+		adminProfile = models.Profile{Name: "Admin", Description: "Administrador del sistema"}
 		db.Create(&adminProfile)
 	}
 
@@ -22,8 +22,44 @@ func LoadDbTables(db *gorm.DB) error {
 	result = db.Where("name = ?", "access").First(&accessProfile)
 	if result.RowsAffected == 0 {
 		// If "access" profile doesn't exist, create it
-		accessProfile = models.Profile{Name: "acceso", Description: "Usuario con acceso al sistema"}
+		accessProfile = models.Profile{Name: "Acceso", Description: "Acceso al sistema"}
 		db.Create(&accessProfile)
+	}
+
+	// Check if the "userlist" profile already exists
+	var userlistProfile models.Profile
+	result = db.Where("name = ?", "userlist").First(&userlistProfile)
+	if result.RowsAffected == 0 {
+		// If "userlist" profile doesn't exist, create it
+		userlistProfile = models.Profile{Name: "Usuarios-Consulta", Description: "Acceso a consulta de usuarios"}
+		db.Create(&userlistProfile)
+	}
+
+	// Check if the "createUser" profile already exists
+	var createUserProfile models.Profile
+	result = db.Where("name = ?", "createUser").First(&createUserProfile)
+	if result.RowsAffected == 0 {
+		// If "createUser" profile doesn't exist, create it
+		createUserProfile = models.Profile{Name: "Usuarios-Registro", Description: "Acceso a registro de nuevos usuarios"}
+		db.Create(&createUserProfile)
+	}
+
+	// Check if the "editUser" profile already exists
+	var editUserProfile models.Profile
+	result = db.Where("name = ?", "editUser").First(&editUserProfile)
+	if result.RowsAffected == 0 {
+		// If "editUser" profile doesn't exist, create it
+		editUserProfile = models.Profile{Name: "Usuarios-Editar", Description: "Acceso a edición de usuarios"}
+		db.Create(&editUserProfile)
+	}
+
+	// Check if the "deleteUser" profile already exists
+	var deleteUserProfile models.Profile
+	result = db.Where("name = ?", "deleteUser").First(&deleteUserProfile)
+	if result.RowsAffected == 0 {
+		// If "deleteUser" profile doesn't exist, create it
+		deleteUserProfile = models.Profile{Name: "Usuarios-Eliminar", Description: "Acceso a eliminar usuarios"}
+		db.Create(&deleteUserProfile)
 	}
 
 	// Check if there are any users in the database

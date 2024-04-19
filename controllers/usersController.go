@@ -149,60 +149,105 @@ func Login(c *gin.Context) {
 }
 
 // validate sencillo solo regresa los datos del usuario sin los perfiles
-//func Validate(c *gin.Context) {
-//	user, _ := c.Get("user")
-
-//	c.JSON(http.StatusOK, gin.H{
-//		"message": user,
-//	})
-//}
-
-// validate con los datos del usuario y perfiles
 func Validate(c *gin.Context) {
-	// Obtener el usuario del contexto
-	user, _ := c.Get("user")
+	//	user, _ := c.Get("user") //con esta linea regreso el usuario en un JSON
 
-	// Verificar si el usuario tiene un ID válido
-	if user != nil {
-		// Convertir el usuario a un modelo.User
-		userModel, ok := user.(models.User)
-		if !ok {
-			// Manejar el caso en el que el usuario no sea de tipo models.User
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "Invalid user type",
-			})
-			return
-		}
-
-		// Cargar los perfiles del usuario desde la base de datos
-		var userProfiles []models.Profile
-		initializers.DB.Model(&userModel).Association("Profiles").Find(&userProfiles)
-
-		// Crear una estructura para almacenar la respuesta JSON
-		response := gin.H{
-			"ID":       userModel.ID,
-			"Login":    userModel.Login,
-			"Name":     userModel.Name,
-			"Email":    userModel.Email,
-			"Active":   userModel.Active,
-			"Profiles": userProfiles,
-		}
-
-		// Responder con la información del usuario y sus perfiles
-		c.JSON(http.StatusOK, response)
-	} else {
-		// Manejar el caso en el que no se pueda obtener el usuario del contexto
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "User not found in context",
-		})
-	}
+	c.JSON(http.StatusOK, gin.H{
+		//		"message": user,
+		"message": "I'm logged in",
+	})
 }
 
 func GetUsersList(c *gin.Context) {
-	// Obtener todos los usuarios omitiendo el usuario con ID igual a 1
+	// Obtener el usuario del contexto
+	user, _ := c.Get("user")
+
+	// Verificar si el usuario tiene acceso permitido
+	if user != nil {
+		if userModel, ok := user.(models.User); ok {
+			// Cargar los perfiles del usuario
+			var userWithProfiles models.User
+			if err := initializers.DB.Preload("Profiles").First(&userWithProfiles, userModel.ID).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
+				return
+			}
+
+			// Verificar si el usuario tiene perfil 1 o 3
+			hasAccess := false
+			for _, profile := range userWithProfiles.Profiles {
+				if profile.ID == 1 || profile.ID == 3 {
+					hasAccess = true
+					break
+				}
+			}
+			if !hasAccess {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
+				return
+			}
+		}
+	} else {
+		// Si el usuario no está en el contexto, devolver un error de autorización
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	// Si el usuario tiene acceso, continuar obteniendo la lista de usuarios
 	var users []models.User
-	initializers.DB.Where("id != ?", 1).Find(&users)
+	initializers.DB.Find(&users)
 
 	// Responder con la lista de usuarios
 	c.JSON(http.StatusOK, users)
+}
+
+func DeleteUser(c *gin.Context) {
+	// Obtener el id del usuario de los parámetros de la ruta
+	userId := c.Param("id")
+
+	// Obtener el usuario del contexto
+	authUser, _ := c.Get("user")
+
+	// Verificar si el usuario tiene acceso permitido
+	if authUser != nil {
+		if userModel, ok := authUser.(models.User); ok {
+			// Cargar los perfiles del usuario
+			var userWithProfiles models.User
+			if err := initializers.DB.Preload("Profiles").First(&userWithProfiles, userModel.ID).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
+				return
+			}
+
+			// Verificar si el usuario tiene perfil 1 o 6
+			hasAccess := false
+			for _, profile := range userWithProfiles.Profiles {
+				if profile.ID == 1 || profile.ID == 6 {
+					hasAccess = true
+					break
+				}
+			}
+			if !hasAccess {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
+				return
+			}
+		}
+	} else {
+		// Si el usuario no está en el contexto, devolver un error de autorización
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	// Verificar si el id es válido
+	var user models.User
+	err := initializers.DB.Preload("Profiles").First(&user, userId).Error
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	// Eliminar el usuario
+	if err := initializers.DB.Delete(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
 }
