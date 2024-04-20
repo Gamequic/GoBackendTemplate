@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/calleros/go-jwt/controllers"
-	"github.com/calleros/go-jwt/initializers"
-	"github.com/calleros/go-jwt/middleware"
+	"github.com/calleros/sich/controllers"
+	"github.com/calleros/sich/initializers"
+	"github.com/calleros/sich/middleware"
 	"github.com/gin-gonic/gin"
 )
 

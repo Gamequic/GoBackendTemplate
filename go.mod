@@ -5,7 +5,6 @@ go 1.22.1
 toolchain go1.22.2
 
 require (
-	github.com/calleros/go-jwt v0.0.0-20240420224854-adda04c75b27
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/gin-gonic/gin v1.9.1
 	github.com/joho/godotenv v1.5.1
