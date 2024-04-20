@@ -15,4 +15,5 @@ type Profile struct {
 	gorm.Model
 	Name        string `gorm:"unique;not null;type:varchar(100)"`
 	Description string `gorm:"unique;not null;type:varchar(255)"`
+	Users       []User `gorm:"many2many:user_profiles"`
 }
