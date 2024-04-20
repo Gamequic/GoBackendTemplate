@@ -1,7 +1,7 @@
 package initializers
 
 import (
-	"github.com/calleros/go-jwt/models"
+	"github.com/calleros/sich/models"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )

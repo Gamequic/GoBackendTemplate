@@ -1,6 +1,6 @@
 package initializers
 
-import "github.com/calleros/go-jwt/models"
+import "github.com/calleros/sich/models"
 
 func SyncDatabase() {
 	DB.AutoMigrate(&models.User{})
