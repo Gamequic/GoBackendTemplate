@@ -4,132 +4,66 @@ import (
 	"net/http"
 
 	"github.com/calleros/sich/initializers"
-	"github.com/calleros/sich/middleware" // Importar el paquete middleware
+	"github.com/calleros/sich/middleware"
 	"github.com/calleros/sich/models"
 	"github.com/gin-gonic/gin"
 )
 
 func CreateProfile(c *gin.Context) {
-	// Verificar acceso utilizando la función VerifyAccess del paquete middleware
-	if err := middleware.VerifyAccess(c, []int{1, 2, 8}); err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
+	// Verificar los permisos del usuario para crear perfiles
+	err := middleware.VerifyAccess(c, []int{1}, map[string]bool{"PrivInsert": true})
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Obtener los datos del cuerpo de la solicitud
-	var profileData models.Profile
-	if err := c.BindJSON(&profileData); err != nil {
+	// Obtener los datos del nuevo perfil del cuerpo de la solicitud
+	var newProfile models.Profile
+	if err := c.ShouldBindJSON(&newProfile); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read body"})
 		return
 	}
 
-	// Crear el perfil
-	result := initializers.DB.Create(&profileData)
+	// Crear el nuevo perfil
+	result := initializers.DB.Create(&newProfile)
 	if result.Error != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to create profile"})
 		return
 	}
 
 	// Respuesta exitosa
-	c.JSON(http.StatusOK, gin.H{"profile": profileData})
+	c.JSON(http.StatusOK, gin.H{"message": "Profile created successfully"})
 }
 
-func GetProfiles(c *gin.Context) {
-	// Verificar acceso utilizando el token JWT almacenado en la cookie
-	if err := middleware.VerifyAccess(c, []int{1, 2, 9}); err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
-		return
-	}
-
-	// Definir una estructura para la respuesta JSON
-	type ProfileResponse struct {
-		ID          uint   `json:"ID"`
-		Name        string `json:"Name"`
-		Description string `json:"Description"`
-	}
-
-	// Obtener todos los perfiles de la base de datos, excluyendo el perfil 1
-	var profiles []models.Profile
-	if err := initializers.DB.Where("id != ?", 1).Find(&profiles).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve profiles"})
-		return
-	}
-
-	// Crear una slice de ProfileResponse y asignar los valores de los perfiles
-	var profilesResponse []ProfileResponse
-	for _, profile := range profiles {
-		profilesResponse = append(profilesResponse, ProfileResponse{
-			ID:          profile.ID,
-			Name:        profile.Name,
-			Description: profile.Description,
-		})
-	}
-
-	// Respuesta exitosa con los perfiles
-	c.JSON(http.StatusOK, gin.H{"profiles": profilesResponse})
-}
-
-func GetProfileById(c *gin.Context) {
-	// Verificar acceso utilizando el token JWT almacenado en la cookie
-	if err := middleware.VerifyAccess(c, []int{1, 2, 10}); err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
+func UpdateProfile(c *gin.Context) {
+	// Verificar los permisos del usuario para actualizar perfiles
+	err := middleware.VerifyAccess(c, []int{1}, map[string]bool{"PrivUpdate": true})
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Obtener el ID del perfil de los parámetros de la ruta
 	profileID := c.Param("id")
 
-	// Definir una estructura para la respuesta JSON
-	type ProfileResponse struct {
-		ID          uint   `json:"ID"`
-		Name        string `json:"Name"`
-		Description string `json:"Description"`
-	}
-
-	// Buscar el perfil por ID en la base de datos
-	var profile models.Profile
-	if err := initializers.DB.Select("id, name, description").First(&profile, profileID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Profile not found"})
+	// Obtener el perfil existente de la base de datos
+	var existingProfile models.Profile
+	result := initializers.DB.First(&existingProfile, profileID)
+	if result.Error != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to find profile"})
 		return
 	}
 
-	// Crear una instancia de ProfileResponse y asignar los valores del perfil
-	profileResponse := ProfileResponse{
-		ID:          profile.ID,
-		Name:        profile.Name,
-		Description: profile.Description,
-	}
-
-	// Respuesta exitosa con el perfil
-	c.JSON(http.StatusOK, gin.H{"profile": profileResponse})
-}
-
-func UpdateProfile(c *gin.Context) {
-	// Verificar acceso utilizando el token JWT almacenado en la cookie
-	if err := middleware.VerifyAccess(c, []int{1, 2, 10}); err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
+	// Decodificar los datos del cuerpo de la solicitud en el perfil existente
+	if err := c.ShouldBindJSON(&existingProfile); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read body"})
 		return
 	}
 
-	// Obtener el ID del perfil de los parámetros de la ruta o del cuerpo de la solicitud
-	profileID := c.Param("id")
-
-	// Buscar el perfil en la base de datos
-	var profile models.Profile
-	if err := initializers.DB.First(&profile, profileID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Profile not found"})
-		return
-	}
-
-	// Bind los datos del cuerpo de la solicitud al perfil existente
-	if err := c.Bind(&profile); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to process request body"})
-		return
-	}
-
-	// Guardar los cambios en la base de datos
-	if err := initializers.DB.Save(&profile).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update profile"})
+	// Actualizar el perfil en la base de datos
+	result = initializers.DB.Save(&existingProfile)
+	if result.Error != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to update profile"})
 		return
 	}
 
@@ -137,42 +71,125 @@ func UpdateProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Profile updated successfully"})
 }
 
-func GetUsersByProfileId(c *gin.Context) {
-	// Verificar acceso utilizando la función VerifyAccess del paquete middleware
-	if err := middleware.VerifyAccess(c, []int{1, 2, 9}); err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
+func GetProfiles(c *gin.Context) {
+	// Verificar los permisos del usuario para obtener perfiles
+	err := middleware.VerifyAccess(c, []int{1}, map[string]bool{"PrivAccess": true})
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Obtener todos los perfiles excepto el perfil con ID 1
+	var profiles []models.Profile
+	result := initializers.DB.Not("id = ?", 1).Find(&profiles)
+	if result.Error != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to fetch profiles"})
+		return
+	}
+
+	// Crear un slice para almacenar los perfiles en formato JSON
+	var profilesJSON []gin.H
+	for _, profile := range profiles {
+		profilesJSON = append(profilesJSON, gin.H{
+			"ID":          profile.ID,
+			"Description": profile.Description,
+			"PrivAccess":  profile.PrivAccess,
+			"PrivExport":  profile.PrivExport,
+			"PrivPrint":   profile.PrivPrint,
+			"PrivInsert":  profile.PrivInsert,
+			"PrivUpdate":  profile.PrivUpdate,
+			"PrivDelete":  profile.PrivDelete,
+		})
+	}
+
+	// Crear un mapa con la respuesta JSON
+	response := gin.H{"profiles": profilesJSON}
+
+	// Agregar el título "Profiles" al mapa de respuesta
+	response["title"] = "Profiles"
+
+	// Respuesta exitosa
+	c.JSON(http.StatusOK, response)
+}
+
+func GetProfileById(c *gin.Context) {
+	// Verificar los permisos del usuario para obtener perfiles
+	err := middleware.VerifyAccess(c, []int{1}, map[string]bool{"PrivAccess": true})
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Obtener el ID del perfil de los parámetros de la ruta
 	profileID := c.Param("id")
 
-	// Buscar el perfil en la base de datos
+	// Buscar el perfil en la base de datos por su ID
 	var profile models.Profile
-	if err := initializers.DB.Preload("Users").First(&profile, profileID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Profile not found"})
+	result := initializers.DB.First(&profile, profileID)
+	if result.Error != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to find profile"})
 		return
 	}
 
-	// Definir una estructura para la respuesta JSON
-	type UserResponse struct {
-		ID    uint   `json:"ID"`
-		Login string `json:"Login"`
-		Name  string `json:"Name"`
-		Email string `json:"Email"`
+	// Crear un mapa con la información del perfil en formato JSON
+	profileJSON := gin.H{
+		"ID":          profile.ID,
+		"Description": profile.Description,
+		"PrivAccess":  profile.PrivAccess,
+		"PrivExport":  profile.PrivExport,
+		"PrivPrint":   profile.PrivPrint,
+		"PrivInsert":  profile.PrivInsert,
+		"PrivUpdate":  profile.PrivUpdate,
+		"PrivDelete":  profile.PrivDelete,
 	}
 
-	// Obtener los usuarios asociados al perfil y crear una lista de respuesta
-	var usersResponse []UserResponse
-	for _, user := range profile.Users {
-		usersResponse = append(usersResponse, UserResponse{
-			ID:    user.ID,
-			Login: user.Login,
-			Name:  user.Name,
-			Email: user.Email,
-		})
+	// Crear un mapa con la respuesta JSON
+	response := gin.H{"profile": profileJSON}
+
+	// Agregar el título "Profile" al mapa de respuesta
+	response["title"] = "Profile"
+
+	// Respuesta exitosa
+	c.JSON(http.StatusOK, response)
+}
+
+func GetUsersByProfileId(c *gin.Context) {
+	// Verificar los permisos del usuario para obtener usuarios por perfil
+	err := middleware.VerifyAccess(c, []int{1}, map[string]bool{"PrivAccess": true})
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
 	}
 
-	// Respuesta exitosa con los usuarios asociados al perfil
-	c.JSON(http.StatusOK, gin.H{"users": usersResponse})
+	// Obtener el ID del perfil de los parámetros de la ruta
+	profileID := c.Param("id")
+
+	// Buscar usuarios asociados al perfil en la tabla de usuarios
+	var users []models.User
+	result := initializers.DB.Joins("JOIN sec_users_profiles ON sec_users_profiles.user_id = sec_users.id").Where("sec_users_profiles.profile_id = ?", profileID).Find(&users)
+	if result.Error != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to find users"})
+		return
+	}
+
+	// Crear un slice de mapas con la información de los usuarios en formato JSON
+	var usersJSON []gin.H
+	for _, user := range users {
+		userJSON := gin.H{
+			"ID":    user.ID,
+			"Login": user.Login,
+			"Name":  user.Name,
+			"Email": user.Email,
+		}
+		usersJSON = append(usersJSON, userJSON)
+	}
+
+	// Crear un mapa con la respuesta JSON
+	response := gin.H{"users": usersJSON}
+
+	// Agregar el título "Users" al mapa de respuesta
+	response["title"] = "Users"
+
+	// Respuesta exitosa
+	c.JSON(http.StatusOK, response)
 }

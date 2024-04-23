@@ -8,12 +8,25 @@ type User struct {
 	Password string    `gorm:"not null"`
 	Name     string    `gorm:"not null;type:varchar(100)"`
 	Email    string    `gorm:"unique;not null;type:varchar(100)"`
-	Profiles []Profile `gorm:"many2many:user_profiles"` // Relación muchos a muchos con profiles
+	Profiles []Profile `gorm:"many2many:sec_users_profiles"`
 }
 
 type Profile struct {
 	gorm.Model
-	Name        string `gorm:"unique;not null;type:varchar(100)"`
 	Description string `gorm:"unique;not null;type:varchar(255)"`
-	Users       []User `gorm:"many2many:user_profiles"`
+	PrivAccess  bool   `gorm:"not null;default:false"`
+	PrivInsert  bool   `gorm:"not null;default:false"`
+	PrivUpdate  bool   `gorm:"not null;default:false"`
+	PrivDelete  bool   `gorm:"not null;default:false"`
+	PrivExport  bool   `gorm:"not null;default:false"`
+	PrivPrint   bool   `gorm:"not null;default:false"`
+	Users       []User `gorm:"many2many:sec_users_profiles"`
+}
+
+func (User) TableName() string {
+	return "sec_users"
+}
+
+func (Profile) TableName() string {
+	return "sec_profiles"
 }

@@ -85,17 +85,7 @@ func Login(c *gin.Context) {
 
 	// Buscar el usuario solicitado
 	var user models.User
-	initializers.DB.Preload("Profiles").First(&user, "login = ?", body.Login)
-
-	if user.ID == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid login or password",
-		})
-		return
-	}
-
-	// Comparar la contraseña enviada con el hash de la contraseña guardada del usuario
-	err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.Password))
+	err := initializers.DB.Preload("Profiles").First(&user, "login = ?", body.Login).Error
 
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -104,17 +94,39 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// Construir un slice de IDs de perfiles del usuario
-	var profileIDs []uint
+	// Imprimir los perfiles obtenidos para depuración
+	fmt.Println("Perfiles del usuario:", user.Profiles)
+
+	// Comparar la contraseña enviada con el hash de la contraseña guardada del usuario
+	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.Password))
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid login or password",
+		})
+		return
+	}
+
+	// Construir un slice de perfiles del usuario con sus permisos
+	var profiles []gin.H
 	for _, profile := range user.Profiles {
-		profileIDs = append(profileIDs, profile.ID)
+		profiles = append(profiles, gin.H{
+			"ID":          profile.ID,
+			"Description": profile.Description,
+			"PrivAccess":  profile.PrivAccess,
+			"PrivExport":  profile.PrivExport,
+			"PrivPrint":   profile.PrivPrint,
+			"PrivInsert":  profile.PrivInsert,
+			"PrivUpdate":  profile.PrivUpdate,
+			"PrivDelete":  profile.PrivDelete,
+		})
 	}
 
 	// Generar los reclamos para el token JWT
 	claims := jwt.MapClaims{
 		"sub":      user.ID,
 		"exp":      time.Now().Add(time.Hour * 24 * 30).Unix(),
-		"profiles": profileIDs,
+		"profiles": profiles,
 	}
 
 	// Generar un token JWT
@@ -189,245 +201,194 @@ func Logout(c *gin.Context) {
 }
 
 func CreateUser(c *gin.Context) {
-	// Verificar acceso utilizando la función VerifyAccess del paquete middleware
-	if err := middleware.VerifyAccess(c, []int{1, 2, 4}); err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
+	// Verificar los permisos del usuario para crear un usuario
+	err := middleware.VerifyAccess(c, []int{1, 2, 5, 6, 7}, map[string]bool{"PrivAccess": true, "PrivInsert": true})
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Obtener los datos del cuerpo de la solicitud
-	var body struct {
-		Login    string
-		Password string
-		Name     string
-		Email    string
-		Profiles []uint // Lista de IDs de perfiles asociados al usuario
+	// Obtener los datos del nuevo usuario del cuerpo de la solicitud
+	var newUser struct {
+		Login    string `json:"login" binding:"required"`
+		Password string `json:"password" binding:"required"`
+		Name     string `json:"name" binding:"required"`
+		Email    string `json:"email" binding:"required"`
+		Profiles []uint `json:"profiles" binding:"required"`
 	}
 
-	if c.Bind(&body) != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Failed to read body",
-		})
+	if err := c.ShouldBindJSON(&newUser); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read body"})
 		return
 	}
 
 	// Hash de la contraseña
-	hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), 10)
-
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newUser.Password), bcrypt.DefaultCost)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Failed to hash password",
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to hash password"})
 		return
 	}
 
-	// Crear el usuario
-	user := models.User{Login: body.Login, Password: string(hash), Name: body.Name, Email: body.Email}
-	result := initializers.DB.Create(&user)
+	// Crear el nuevo usuario
+	user := models.User{
+		Login:    newUser.Login,
+		Password: string(hashedPassword),
+		Name:     newUser.Name,
+		Email:    newUser.Email,
+	}
 
+	result := initializers.DB.Create(&user)
 	if result.Error != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Failed to create user",
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to create user"})
 		return
 	}
 
 	// Asociar los perfiles con el usuario en la tabla user_profiles
-	for _, profileID := range body.Profiles {
+	for _, profileID := range newUser.Profiles {
 		var profile models.Profile
 		result := initializers.DB.First(&profile, profileID)
 		if result.Error != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "Failed to find profile",
-			})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to find profile"})
 			return
 		}
 		initializers.DB.Model(&user).Association("Profiles").Append(&profile)
 	}
 
-	// Respuesta exitosa
-	c.JSON(http.StatusOK, gin.H{})
-}
-
-func GetUsers(c *gin.Context) {
-	// Verificar acceso utilizando la función VerifyAccess del paquete middleware
-	if err := middleware.VerifyAccess(c, []int{1, 2, 5}); err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
-		return
-	}
-
-	// Obtener todos los usuarios excluyendo al usuario con ID 1
-	var users []models.User
-	initializers.DB.Where("id != ?", 1).Find(&users)
-
-	// Estructura para almacenar los datos del usuario en el orden deseado
-	type UserResponse struct {
-		ID    uint   `json:"ID"`
-		Login string `json:"Login"`
-		Name  string `json:"Name"`
-		Email string `json:"Email"`
-	}
-
-	// Preparar los datos para la respuesta JSON
-	var responseData []UserResponse
-	for _, user := range users {
-		userData := UserResponse{
-			ID:    user.ID,
-			Login: user.Login,
-			Name:  user.Name,
-			Email: user.Email,
-		}
-		responseData = append(responseData, userData)
-	}
-
-	// Crear un mapa para contener la matriz de usuarios
-	responseMap := gin.H{"users": responseData}
-
-	// Respuesta exitosa
-	c.JSON(http.StatusOK, responseMap)
-}
-
-func GetUserById(c *gin.Context) {
-	// Verificar acceso utilizando el token JWT almacenado en la cookie
-	if err := middleware.VerifyAccess(c, []int{1, 3}); err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
-		return
-	}
-
-	// Obtener el ID del usuario de los parámetros de la ruta
-	userID := c.Param("id")
-
-	// Definir una estructura para la respuesta JSON
-	type UserProfile struct {
-		ID          uint   `json:"ID"`
-		Name        string `json:"Name"`
-		Description string `json:"Description"`
-	}
-
-	type UserResponse struct {
-		ID       uint          `json:"ID"`
-		Login    string        `json:"Login"`
-		Name     string        `json:"Name"`
-		Email    string        `json:"Email"`
-		Profiles []UserProfile `json:"Profiles"`
-	}
-
-	// Obtener el usuario de la base de datos
-	var user models.User
-	if err := initializers.DB.Preload("Profiles").First(&user, userID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-		return
-	}
-
-	// Crear una instancia de UserResponse y asignar los valores del usuario y los perfiles
-	response := UserResponse{
-		ID:    user.ID,
-		Login: user.Login,
-		Name:  user.Name,
-		Email: user.Email,
-		Profiles: func() []UserProfile {
-			profiles := make([]UserProfile, len(user.Profiles))
-			for i, profile := range user.Profiles {
-				profiles[i] = UserProfile{
-					ID:          profile.ID,
-					Name:        profile.Name,
-					Description: profile.Description,
-				}
-			}
-			return profiles
-		}(),
-	}
-
-	// Respuesta exitosa
-	c.JSON(http.StatusOK, gin.H{"user": response})
+	c.JSON(http.StatusOK, gin.H{"message": "User created successfully"})
 }
 
 func UpdateUser(c *gin.Context) {
-	// Verificar acceso utilizando la función VerifyAccess del paquete middleware
-	if err := middleware.VerifyAccess(c, []int{1, 2, 6}); err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
+	// Verificar los permisos del usuario para actualizar un usuario
+	err := middleware.VerifyAccess(c, []int{1, 2, 6, 7}, map[string]bool{"PrivAccess": true, "PrivUpdate": true})
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Obtener el ID del usuario de los parámetros de la ruta
+	// Obtener el ID del usuario a actualizar del parámetro de la ruta
 	userID := c.Param("id")
 
-	// Buscar el usuario por ID
-	var user models.User
-	err := initializers.DB.Preload("Profiles").First(&user, userID).Error
+	// Verificar si el ID del usuario es válido
+	var existingUser models.User
+	result := initializers.DB.First(&existingUser, userID)
+	if result.Error != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User not found"})
+		return
+	}
+
+	// Obtener los datos actualizados del usuario del cuerpo de la solicitud
+	var updatedUser struct {
+		Login    string `json:"login"`
+		Password string `json:"password"`
+		Name     string `json:"name"`
+		Email    string `json:"email"`
+		Profiles []uint `json:"profiles"`
+	}
+
+	if err := c.ShouldBindJSON(&updatedUser); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read body"})
+		return
+	}
+
+	// Actualizar los campos del usuario si se proporcionan
+	if updatedUser.Login != "" {
+		existingUser.Login = updatedUser.Login
+	}
+	if updatedUser.Password != "" {
+		// Hash de la nueva contraseña
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(updatedUser.Password), bcrypt.DefaultCost)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to hash password"})
+			return
+		}
+		existingUser.Password = string(hashedPassword)
+	}
+	if updatedUser.Name != "" {
+		existingUser.Name = updatedUser.Name
+	}
+	if updatedUser.Email != "" {
+		existingUser.Email = updatedUser.Email
+	}
+
+	// Actualizar los perfiles asociados con el usuario
+	if len(updatedUser.Profiles) > 0 {
+		// Limpiar los perfiles asociados existentes
+		initializers.DB.Model(&existingUser).Association("Profiles").Clear()
+
+		// Asociar los nuevos perfiles con el usuario
+		for _, profileID := range updatedUser.Profiles {
+			var profile models.Profile
+			result := initializers.DB.First(&profile, profileID)
+			if result.Error != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to find profile"})
+				return
+			}
+			initializers.DB.Model(&existingUser).Association("Profiles").Append(&profile)
+		}
+	}
+
+	// Guardar los cambios en la base de datos
+	result = initializers.DB.Save(&existingUser)
+	if result.Error != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to update user"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "User updated successfully"})
+}
+
+func GetUsers(c *gin.Context) {
+	// Verificar los permisos del usuario para acceder a la lista de usuarios
+	err := middleware.VerifyAccess(c, []int{1, 2, 4, 5, 6, 7}, map[string]bool{"PrivAccess": true})
 	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Obtener todos los usuarios de la base de datos, excepto el usuario con ID 1
+	var users []models.User
+	result := initializers.DB.Where("id != ?", 1).Find(&users)
+	if result.Error != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to get users"})
+		return
+	}
+
+	// Crear un mapa para incluir el título "Users" y la lista de usuarios
+	usersJSON := gin.H{
+		"Users": users,
+	}
+
+	c.JSON(http.StatusOK, usersJSON)
+}
+
+func GetUserById(c *gin.Context) {
+	// Verificar los permisos del usuario para acceder a un usuario específico
+	err := middleware.VerifyAccess(c, []int{1, 2, 6, 7}, map[string]bool{"PrivAccess": true})
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Obtener el ID del usuario de la URL
+	userID := c.Param("id")
+
+	// Buscar el usuario en la base de datos por su ID
+	var user models.User
+	result := initializers.DB.First(&user, userID)
+	if result.Error != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
 
-	// Obtener los datos del cuerpo de la solicitud
-	var body struct {
-		Login    string
-		Password string
-		Name     string
-		Email    string
-		Profiles []uint // Lista de IDs de perfiles asociados al usuario
-	}
-
-	if c.Bind(&body) != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Failed to read body",
-		})
-		return
-	}
-
-	// Actualizar los campos del usuario
-	if body.Login != "" {
-		user.Login = body.Login
-	}
-	if body.Password != "" {
-		hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), 10)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "Failed to hash password",
-			})
-			return
-		}
-		user.Password = string(hash)
-	}
-	if body.Name != "" {
-		user.Name = body.Name
-	}
-	if body.Email != "" {
-		user.Email = body.Email
-	}
-
-	// Borrar los registros de la tabla user_profiles para este usuario
-	initializers.DB.Model(&user).Association("Profiles").Clear()
-
-	// Asociar los perfiles con el usuario en la tabla user_profiles
-	for _, profileID := range body.Profiles {
-		var profile models.Profile
-		result := initializers.DB.First(&profile, profileID)
-		if result.Error != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "Failed to find profile",
-			})
-			return
-		}
-		initializers.DB.Model(&user).Association("Profiles").Append(&profile)
-	}
-
-	// Guardar los cambios en la base de datos
-	result := initializers.DB.Save(&user)
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
-		return
-	}
-
-	// Respuesta exitosa
-	c.JSON(http.StatusOK, gin.H{})
+	// Respuesta exitosa con el usuario encontrado
+	c.JSON(http.StatusOK, user)
 }
 
 func DeleteUser(c *gin.Context) {
-	// Verificar acceso utilizando la función VerifyAccess del paquete middleware
-	if err := middleware.VerifyAccess(c, []int{1, 2, 7}); err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
+	// Verificar los permisos del usuario para eliminar usuarios
+	err := middleware.VerifyAccess(c, []int{1, 2, 7}, map[string]bool{"PrivAccess": true, "PrivDelete": true})
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -459,9 +420,10 @@ func DeleteUser(c *gin.Context) {
 }
 
 func DeleteUserCompletely(c *gin.Context) {
-	// Verificar acceso utilizando la función VerifyAccess del paquete middleware
-	if err := middleware.VerifyAccess(c, []int{1}); err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized"})
+	// Verificar los permisos del usuario para eliminar usuarios
+	err := middleware.VerifyAccess(c, []int{1}, map[string]bool{"PrivAccess": true, "PrivDelete": true})
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 

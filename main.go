@@ -11,7 +11,7 @@ func init() {
 	initializers.LoadEnvVariables()
 	initializers.ConnectToDb()
 	initializers.SyncDatabase()
-	initializers.LoadDbTables(initializers.DB)
+	initializers.LoadUsersTables(initializers.DB)
 
 }
 

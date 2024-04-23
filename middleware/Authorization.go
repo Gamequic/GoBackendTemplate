@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func VerifyAccess(c *gin.Context, requiredProfiles []int) error {
+func VerifyAccess(c *gin.Context, profileIDs []int, requiredPrivileges map[string]bool) error {
 	// Verificar si se proporciona un token JWT en la cookie
 	tokenString, err := c.Cookie("Authorization")
 	if err != nil {
@@ -29,36 +29,26 @@ func VerifyAccess(c *gin.Context, requiredProfiles []int) error {
 
 	// Verificar si el token es válido
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		// Verificar si el usuario tiene los perfiles necesarios
-		if profiles, ok := claims["profiles"]; ok {
-			// Convertir los perfiles a un slice de enteros
-			var profilesClaim []interface{}
-			profilesClaim, ok := profiles.([]interface{})
-			if !ok {
-				return fmt.Errorf("invalid profiles claim")
-			}
-			var profilesIDs []int
-			for _, p := range profilesClaim {
-				profile, ok := p.(float64)
+		// Verificar si los perfiles y permisos son válidos
+		if profiles, ok := claims["profiles"].([]interface{}); ok {
+			for _, p := range profiles {
+				profile, ok := p.(map[string]interface{})
 				if !ok {
 					return fmt.Errorf("invalid profile format")
 				}
-				profilesIDs = append(profilesIDs, int(profile))
-			}
 
-			// Verificar si el usuario tiene los perfiles necesarios
-			hasRequiredProfile := false
-			for _, requiredProfile := range requiredProfiles {
-				for _, profileID := range profilesIDs {
-					if profileID == requiredProfile {
-						hasRequiredProfile = true
-						break
+				// Verificar si el perfil está en los perfiles permitidos
+				profileID := int(profile["ID"].(float64))
+				if contains(profileIDs, profileID) {
+					// Verificar si el perfil tiene los permisos necesarios
+					for privilege, required := range requiredPrivileges {
+						if profile[privilege] != required {
+							return fmt.Errorf("unauthorized")
+						}
 					}
+					// Si se encontró un perfil válido, salir del bucle
+					return nil
 				}
-			}
-
-			if !hasRequiredProfile {
-				return fmt.Errorf("unauthorized")
 			}
 		} else {
 			return fmt.Errorf("no profiles found in token")
@@ -67,5 +57,14 @@ func VerifyAccess(c *gin.Context, requiredProfiles []int) error {
 		return fmt.Errorf("invalid token")
 	}
 
-	return nil
+	return fmt.Errorf("unauthorized")
+}
+
+func contains(slice []int, val int) bool {
+	for _, item := range slice {
+		if item == val {
+			return true
+		}
+	}
+	return false
 }
