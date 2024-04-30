@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/calleros/go-jwt/initializers"
-	"github.com/calleros/go-jwt/models"
+	"github.com/calleros/sich/initializers"
+	"github.com/calleros/sich/models"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
 )

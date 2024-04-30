@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/calleros/go-jwt/controllers"
-	"github.com/calleros/go-jwt/initializers"
-	"github.com/calleros/go-jwt/middleware"
+	"github.com/calleros/sich/controllers"
+	"github.com/calleros/sich/initializers"
+	"github.com/calleros/sich/middleware"
 	"github.com/gin-gonic/gin"
 )
 
@@ -11,8 +11,7 @@ func init() {
 	initializers.LoadEnvVariables()
 	initializers.ConnectToDb()
 	initializers.SyncDatabase()
-	initializers.LoadDbTables(initializers.DB)
-
+	initializers.LoadUsersTables(initializers.DB)
 }
 
 func main() {
@@ -32,6 +31,9 @@ func main() {
 	r.GET("/api/profiles/:id", middleware.RequireAuth, controllers.GetProfileById)
 	r.PUT("/api/profiles/:id", middleware.RequireAuth, controllers.UpdateProfile)
 	r.GET("/api/profiles/:id/users", middleware.RequireAuth, controllers.GetUsersByProfileId)
+	r.GET("/api/acceder/:nss", controllers.Acceder)
+	r.GET("/api/siap/:strDele/:strMatricula", controllers.Siap)
+	r.GET("/api/siap/incidencias/:matricula/:periodo", controllers.ObtenerIncidencia)
 
 	r.Run() // listen and serve on 0.0.0.0:8080
 }
